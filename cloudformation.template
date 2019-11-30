@@ -15,6 +15,112 @@
     }
   },
   "Resources": {
+    "DeploymentLambdaRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "lambda.amazonaws.com"
+                ]
+              },
+              "Action": [
+                "sts:AssumeRole"
+              ]
+            }
+          ]
+        },
+        "Path": "/",
+        "ManagedPolicyArns": [
+          "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+        ],
+        "Policies": [
+          {
+            "PolicyName": "LambdaExecutionPolicy",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "lambda:PublishVersion",
+                    "apigateway:POST"
+                  ],
+                  "Resource": [
+                    "*"
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "DeploymentLambda": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Role": {
+          "Fn::GetAtt": [
+            "DeploymentLambdaRole",
+            "Arn"
+          ]
+        },
+        "Handler": "serverless.handler",
+        "Runtime": "nodejs8.10",
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "serverless-arch-${AWS::Region}"
+          },
+          "S3Key": "serverless.zip"
+        }
+      }
+    },
+    "ApiGatewayCloudwatchRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "apigateway.amazonaws.com"
+                ]
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Path": "/",
+        "ManagedPolicyArns": [
+          "arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
+        ]
+      }
+    },
+    "ApiGatewayAccount": {
+      "Type": "AWS::ApiGateway::Account",
+      "Properties": {
+        "CloudWatchRoleArn": {
+          "Fn::GetAtt": [
+            "ApiGatewayCloudwatchRole",
+            "Arn"
+          ]
+        }
+      }
+    },
+    "RestApi": {
+      "Type": "AWS::ApiGateway::RestApi",
+      "Properties": {
+        "Name": {
+          "Ref": "AWS::StackName"
+        }
+      }
+    },
     "LambdaExecutionRole": {
       "Type": "AWS::IAM::Role",
       "Properties": {
@@ -26,7 +132,8 @@
               "Effect": "Allow",
               "Principal": {
                 "Service": [
-                  "lambda.amazonaws.com"
+                  "lambda.amazonaws.com",
+                  "apigateway.amazonaws.com"
                 ]
               },
               "Action": [
@@ -84,6 +191,206 @@
           "S3Key": {
             "Fn::Sub": "artifacts/lambda-test/${ProjectVersion}/${DeploymentTime}.jar"
           }
+        }
+      }
+    },
+    "TestResource": {
+      "Type": "AWS::ApiGateway::Resource",
+      "Properties": {
+        "PathPart": "test",
+        "RestApiId": {
+          "Ref": "RestApi"
+        },
+        "ParentId": {
+          "Fn::GetAtt": [
+            "RestApi",
+            "RootResourceId"
+          ]
+        }
+      }
+    },
+    "TestGetMethod": {
+      "Type": "AWS::ApiGateway::Method",
+      "Properties": {
+        "HttpMethod": "GET",
+        "RestApiId": {
+          "Ref": "RestApi"
+        },
+        "ResourceId": {
+          "Ref": "TestResource"
+        },
+        "AuthorizationType": "NONE",
+        "RequestParameters": {
+          "method.request.querystring.value": "True",
+          "method.request.header.Accept": "True"
+        },
+        "MethodResponses": [
+          {
+            "StatusCode": "200"
+          }
+        ],
+        "Integration": {
+          "Type": "AWS",
+          "Uri": {
+            "Fn::Sub": "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${TestLambda.Arn}/invocations"
+          },
+          "IntegrationHttpMethod": "POST",
+          "RequestParameters": {
+            "integration.request.querystring.value": "method.request.querystring.value",
+            "integration.request.header.Accept": "method.request.header.Accept"
+          },
+          "RequestTemplates": {
+            "application/json": "{\"value\":\"$input.params('value')\"}"
+          },
+          "PassthroughBehavior": "NEVER",
+          "IntegrationResponses": [
+            {
+              "SelectionPattern": ".*",
+              "StatusCode": "200"
+            }
+          ]
+        }
+      }
+    },
+    "TestLambdaPermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Ref": "TestLambda"
+        },
+        "Principal": "apigateway.amazonaws.com",
+        "SourceArn": {
+          "Fn::Sub": "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/*"
+        }
+      }
+    },
+    "ApiDeployment": {
+      "DependsOn": [
+        "TestGetMethod"
+      ],
+      "Type": "Custom::ApiDeployment",
+      "Properties": {
+        "ServiceToken": {
+          "Fn::GetAtt": [
+            "DeploymentLambda",
+            "Arn"
+          ]
+        },
+        "RestApiId": {
+          "Ref": "RestApi"
+        },
+        "StageName": "production",
+        "DeploymentTime": {
+          "Ref": "DeploymentTime"
+        }
+      }
+    },
+    "CloudformationDistribution": {
+      "Type": "AWS::CloudFront::Distribution",
+      "Properties": {
+        "DistributionConfig": {
+          "Enabled": "true",
+          "HttpVersion": "http2",
+          "Origins": [
+            {
+              "DomainName": {
+                "Fn::Sub": "${RestApi}.execute-api.${AWS::Region}.amazonaws.com"
+              },
+              "OriginPath": "/production",
+              "Id": "APIGATEWAY",
+              "CustomOriginConfig": {
+                "OriginProtocolPolicy": "https-only"
+              }
+            }
+          ],
+          "DefaultCacheBehavior": {
+            "TargetOriginId": "APIGATEWAY",
+            "Compress": true,
+            "AllowedMethods": [
+              "DELETE",
+              "GET",
+              "HEAD",
+              "OPTIONS",
+              "PATCH",
+              "POST",
+              "PUT"
+            ],
+            "ForwardedValues": {
+              "QueryString": "true",
+              "Cookies": {
+                "Forward": "none"
+              },
+              "Headers": [
+                "Accept",
+                "Content-Type",
+                "Authorization"
+              ]
+            },
+            "DefaultTTL": 0,
+            "MaxTTL": 0,
+            "MinTTL": 0,
+            "ViewerProtocolPolicy": "redirect-to-https"
+          }
+        }
+      }
+    },
+    "AuthorizerLambda": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Handler": "com.serverlessbook.lambda.authorizer.Handler",
+        "Runtime": "java8",
+        "Timeout": "300",
+        "MemorySize": "1024",
+        "Description": "Test lambda",
+        "Role": {
+          "Fn::GetAtt": [
+            "LambdaExecutionRole",
+            "Arn"
+          ]
+        },
+        "Code": {
+          "S3Bucket": {
+            "Ref": "DeploymentBucket"
+          },
+          "S3Key": {
+            "Fn::Sub": "artifacts/lambda-authorizer/${ProjectVersion}/${DeploymentTime}.jar"
+          }
+        }
+      }
+    },
+    "ApiGatewayAuthorizer": {
+      "Type": "AWS::ApiGateway::Authorizer",
+      "Properties": {
+        "Name": "AUTHORIZER",
+        "Type": "TOKEN",
+        "RestApiId": {
+          "Ref": "RestApi"
+        },
+        "AuthorizerUri": {
+          "Fn::Sub": "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthorizerLambda.Arn}/invocations"
+        },
+        "AuthorizerCredentials": {
+          "Fn::GetAtt": [
+            "LambdaExecutionRole",
+            "Arn"
+          ]
+        },
+        "IdentitySource": "method.request.header.Authorization",
+        "IdentityValidationExpression": "Bearer ?[a-zA-Z_0-9+=,.@\\-_/-]+",
+        "AuthorizerResultTtlInSeconds": 120
+      }
+    },
+    "AuthorizerLambdaPermisson": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Ref": "AuthorizerLambda"
+        },
+        "Principal": "apigateway.amazonaws.com",
+        "SourceArn": {
+          "Fn::Sub": "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/authorizers/${ApiGatewayAuthorizer}"
         }
       }
     }
