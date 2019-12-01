@@ -1,0 +1,4 @@
+dependencies {
+    compile group: 'com.google.inject', name: 'guice', version: guiceVersion
+    compile project(':services-user')
+}
