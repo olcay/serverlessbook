@@ -219,7 +219,10 @@
         "ResourceId": {
           "Ref": "TestResource"
         },
-        "AuthorizationType": "NONE",
+        "AuthorizationType": "CUSTOM",
+        "AuthorizerId": {
+          "Ref": "ApiGatewayAuthorizer"
+        },
         "RequestParameters": {
           "method.request.querystring.value": "True",
           "method.request.header.Accept": "True"
@@ -368,12 +371,22 @@
           "Ref": "RestApi"
         },
         "AuthorizerUri": {
-          "Fn::Sub": "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthorizerLambda.Arn}/invocations"
-        },
-        "AuthorizerCredentials": {
-          "Fn::GetAtt": [
-            "LambdaExecutionRole",
-            "Arn"
+          "Fn::Join": [
+            "",
+            [
+              "arn:aws:apigateway:",
+              {
+                "Ref": "AWS::Region"
+              },
+              ":lambda:path/2015-03-31/functions/",
+              {
+                "Fn::GetAtt": [
+                  "AuthorizerLambda",
+                  "Arn"
+                ]
+              },
+              "/invocations"
+            ]
           ]
         },
         "IdentitySource": "method.request.header.Authorization",

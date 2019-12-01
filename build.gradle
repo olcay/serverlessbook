@@ -90,7 +90,7 @@ cloudFormation {
     templateFile project.file('cloudformation.template')
     templateBucket deploymentBucketName
     templateKeyPrefix "cfn-templates"
-    stackName "serverlessbooks"
+    stackName "serverlessbook"
     conventionMapping.stackParams = {
         return [
                 DeploymentBucket: deploymentBucketName,
