@@ -442,12 +442,54 @@
           {
             "AttributeName": "UserId",
             "AttributeType": "S"
+          },
+          {
+            "AttributeName": "Username",
+            "AttributeType": "S"
+          },
+          {
+            "AttributeName": "Email",
+            "AttributeType": "S"
           }
         ],
         "KeySchema": [
           {
             "AttributeName": "UserId",
             "KeyType": "HASH"
+          }
+        ],
+        "GlobalSecondaryIndexes": [
+          {
+            "IndexName": "UsernameIndex",
+            "KeySchema": [
+              {
+                "AttributeName": "Username",
+                "KeyType": "HASH"
+              }
+            ],
+            "Projection": {
+              "ProjectionType": "ALL"
+            },
+            "ProvisionedThroughput": {
+              "ReadCapacityUnits": 1,
+              "WriteCapacityUnits": 1
+            }
+          },
+          {
+            "IndexName": "EmailIndex",
+            "KeySchema": [
+              {
+                "AttributeName": "Email",
+                "KeyType": "HASH"
+              }
+            ],
+            "Projection": {
+              "ProjectionType": "ALL"
+            },
+            "ProvisionedThroughput": {
+              "ReadCapacityUnits": 1,
+              "WriteCapacityUnits": 1
+            }
           }
         ],
         "ProvisionedThroughput": {
@@ -474,6 +516,136 @@
         "ProvisionedThroughput": {
           "ReadCapacityUnits": 1,
           "WriteCapacityUnits": 1
+        }
+      }
+    },
+    "UserRegistrationLambda": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Handler": "com.serverlessbook.lambda.userregistration.Handler",
+        "Runtime": "java8",
+        "Timeout": "300",
+        "MemorySize": "1024",
+        "Description": "User registration Lambda",
+        "Role": {
+          "Fn::GetAtt": [
+            "LambdaExecutionRole",
+            "Arn"
+          ]
+        },
+        "Code": {
+          "S3Bucket": {
+            "Ref": "DeploymentBucket"
+          },
+          "S3Key": {
+            "Fn::Sub": "artifacts/lambda-userregistration/${ProjectVersion}/${DeploymentTime}.jar"
+          }
+        },
+        "Environment": {
+          "Variables": {
+            "DynamoDbTokenTable": {
+              "Ref": "TokenTable"
+            },
+            "DynamoDbUserTable": {
+              "Ref": "UserTable"
+            }
+          }
+        }
+      }
+    },
+    "UsersResource": {
+      "Type": "AWS::ApiGateway::Resource",
+      "Properties": {
+        "PathPart": "users",
+        "RestApiId": {
+          "Ref": "RestApi"
+        },
+        "ParentId": {
+          "Fn::GetAtt": [
+            "RestApi",
+            "RootResourceId"
+          ]
+        }
+      }
+    },
+    "UsersPostMethod": {
+      "Type": "AWS::ApiGateway::Method",
+      "Properties": {
+        "HttpMethod": "POST",
+        "RestApiId": {
+          "Ref": "RestApi"
+        },
+        "ResourceId": {
+          "Ref": "UsersResource"
+        },
+        "AuthorizationType": "NONE",
+        "RequestParameters": {
+        },
+        "MethodResponses": [
+          {
+            "StatusCode": "201",
+            "ResponseParameters": {
+              "method.response.header.Location": "true"
+            }
+          },
+          {
+            "StatusCode": "400"
+          },
+          {
+            "StatusCode": "409"
+          }
+        ],
+        "Integration": {
+          "Type": "AWS",
+          "Uri": {
+            "Fn::Sub": "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UserRegistrationLambda.Arn}/invocations"
+          },
+          "IntegrationHttpMethod": "POST",
+          "RequestParameters": {
+          },
+          "RequestTemplates": {
+            "application/json": "{\"username\": $input.json('$.username'),\"email\": $input.json('$.email')}"
+          },
+          "PassthroughBehavior": "NEVER",
+          "IntegrationResponses": [
+            {
+              "SelectionPattern": ".*",
+              "StatusCode": "201",
+              "ResponseParameters": {
+                "method.response.header.Location": "integration.response.body.resourceUrl"
+              },
+              "ResponseTemplates": {
+                "application/json": "#set($inputRoot = $input.path('$'))"
+              }
+            },
+            {
+              "SelectionPattern": ".*not valid.*",
+              "StatusCode": "400",
+              "ResponseTemplates": {
+                "application/json": "{\"code\": 400, \"errorMessage\":\"$input.path('$.errorMessage')\"}"
+              }
+            },
+            {
+              "SelectionPattern": ".*already exists.*",
+              "StatusCode": "409",
+              "ResponseTemplates": {
+                "application/json": "{\"code\": 409, \"errorMessage\":\"$input.path('$.errorMessage')\"}"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "UsersPostLambdaPermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Ref": "UserRegistrationLambda"
+        },
+        "Principal": "apigateway.amazonaws.com",
+        "SourceArn": {
+          "Fn::Sub": "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/*"
         }
       }
     }

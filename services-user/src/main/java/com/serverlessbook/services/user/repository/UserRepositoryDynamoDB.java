@@ -28,4 +28,35 @@ public class UserRepositoryDynamoDB implements UserRepository {
         // Token not found, return empty.
         return Optional.empty();
     }
+
+    @Override
+    public void saveUser(User user) {
+        dynamoDBMapper.save(user);
+    }
+
+    public Optional<User> getUserByCriteria(String indexName, User hashKeyValues) {
+
+        DynamoDBQueryExpression<User> expression = new DynamoDBQueryExpression<User>()
+                .withIndexName(indexName)
+                .withConsistentRead(false)
+                .withHashKeyValues(hashKeyValues);
+
+        QueryResultPage<User> result = dynamoDBMapper.queryPage(User.class, expression);
+
+        if (result.getCount() > 0) {
+            return Optional.of(result.getResults().get(0));
+        }
+
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<User> getUserByEmail(String email) {
+        return getUserByCriteria("EmailIndex", new User().setEmail(email));
+    }
+
+    @Override
+    public Optional<User> getUserByUsername(String username) {
+        return getUserByCriteria("UsernameIndex", new User().setUsername(username));
+    }
 }
