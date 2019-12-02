@@ -1,14 +1,17 @@
 package com.serverlessbook.services.user.domain;
 
-public class User {
+import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBAttribute;
+import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBHashKey;
+import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBIndexHashKey;
 
-    
+public class User {
+    @DynamoDBHashKey(attributeName = "UserId")
     private String id;
 
-    
+    @DynamoDBAttribute(attributeName = "Username")
     private String username;
 
-    
+    @DynamoDBAttribute(attributeName = "Email")
     private String email;
 
     public String getId() {
