@@ -217,6 +217,13 @@
                   "Ref": "UserRegistrationSnsTopic"
                 }
               ]
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "ses:*"
+              ],
+              "Resource": "*"
             }
           ]
         },
@@ -934,7 +941,59 @@
     "UserRegistrationSnsTopic": {
       "Type": "AWS::SNS::Topic",
       "Properties": {
-        "Subscription": []
+        "Subscription": [
+          {
+            "Endpoint": {
+              "Fn::GetAtt": [
+                "UserRegistrationWelcomeMailLambda",
+                "Arn"
+              ]
+            },
+            "Protocol": "lambda"
+          }
+        ]
+      }
+    },
+    "UserRegistrationWelcomeMailLambda": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Handler": "com.serverlessbook.lambda.userregistration.welcomemail.Handler",
+        "Runtime": "java8",
+        "Timeout": "300",
+        "MemorySize": "1024",
+        "Description": "User registration welcome mail Lambda",
+        "Role": {
+          "Fn::GetAtt": [
+            "LambdaExecutionRole",
+            "Arn"
+          ]
+        },
+        "Code": {
+          "S3Bucket": {
+            "Ref": "DeploymentBucket"
+          },
+          "S3Key": {
+            "Fn::Sub": "artifacts/lambda-userregistration-welcomemail/${ProjectVersion}/${DeploymentTime}.jar"
+          }
+        },
+        "Environment": {
+          "Variables": {
+            "SenderEmail": "noreply@otomatikmuhendis.com"
+          }
+        }
+      }
+    },
+    "UserRegistrationWelcomeMailLambdaPermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Ref": "UserRegistrationWelcomeMailLambda"
+        },
+        "Principal": "sns.amazonaws.com",
+        "SourceArn": {
+          "Fn::Sub": "arn:aws:sns:${AWS::Region}:${AWS::AccountId}:*"
+        }
       }
     }
   }
