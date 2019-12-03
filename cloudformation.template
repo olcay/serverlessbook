@@ -206,6 +206,17 @@
                   "Fn::Sub": "arn:aws:s3:::${ProfilePicturesBucket}"
                 }
               ]
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "SNS:Publish"
+              ],
+              "Resource": [
+                {
+                  "Ref": "UserRegistrationSnsTopic"
+                }
+              ]
             }
           ]
         },
@@ -606,6 +617,9 @@
             },
             "DynamoDbUserTable": {
               "Ref": "UserTable"
+            },
+            "UserRegistrationSnsTopic": {
+              "Ref": "UserRegistrationSnsTopic"
             }
           }
         }

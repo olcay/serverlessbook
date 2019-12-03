@@ -1,6 +1,8 @@
 package com.serverlessbook.lambda.userregistration;
 
 import com.amazonaws.services.lambda.runtime.Context;
+import com.amazonaws.services.lambda.runtime.LambdaLogger;
+import com.amazonaws.services.sns.AmazonSNSClient;
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.inject.Guice;
@@ -54,6 +56,25 @@ public class Handler extends LambdaHandler<Handler.RegistrationInput, Handler.Re
         this.userService = userService;
     }
 
+    LambdaLogger logger;
+
+    private AmazonSNSClient amazonSNSClient;
+
+    @Inject
+    public Handler setAmazonSNSClient(AmazonSNSClient amazonSNSClient) {
+        this.amazonSNSClient = amazonSNSClient;
+        return this;
+    }
+
+    private void notifySnsSubscribers(User user) {
+      try {
+        amazonSNSClient.publish(System.getenv("UserRegistrationSnsTopic"), user.getEmail());
+        logger.log("SNS notification sent for "+user.getEmail());
+      } catch (Exception anyException) {
+        logger.log("SNS notification failed for "+user.getEmail()+" as "+ anyException.getMessage());
+      }
+    }
+
     public Handler() {
         INJECTOR.injectMembers(this);
         Objects.requireNonNull(userService);
@@ -61,7 +82,10 @@ public class Handler extends LambdaHandler<Handler.RegistrationInput, Handler.Re
 
     @Override
     public RegistrationOutput handleRequest(RegistrationInput input, Context context) {
+        logger = context.getLogger();
+        
         User createdUser = userService.registerNewUser(input.username, input.email);
+        notifySnsSubscribers(createdUser);
         return new RegistrationOutput(createdUser);
     }
 }
