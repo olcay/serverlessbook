@@ -12,6 +12,10 @@
     "DeploymentTime": {
       "Type": "String",
       "Description": "It is a timestamp value which shows the deployment time. Used to rotate sources."
+    },
+    "DomainName": {
+      "Type": "String",
+      "Description": "Domain Name to serve the application"
     }
   },
   "Resources": {
@@ -157,7 +161,6 @@
             {
               "Effect": "Allow",
               "Action": [
-                "s3:ListBuckets",
                 "dynamodb:BatchGetItem",
                 "dynamodb:BatchWriteItem",
                 "dynamodb:DeleteItem",
@@ -176,6 +179,31 @@
                 },
                 {
                   "Fn::Sub": "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${UserTable}*"
+                }
+              ]
+            },
+            {
+              "Action": [
+                "s3:GetObject",
+                "s3:GetObjectTagging",
+                "s3:PutObject",
+                "s3:PutObjectTagging"
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::Sub": "arn:aws:s3:::${ProfilePicturesBucket}/*"
+                }
+              ]
+            },
+            {
+              "Action": [
+                "s3:ListBucket"
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::Sub": "arn:aws:s3:::${ProfilePicturesBucket}"
                 }
               ]
             }
@@ -323,6 +351,14 @@
               "CustomOriginConfig": {
                 "OriginProtocolPolicy": "https-only"
               }
+            },
+            {
+              "DomainName": {
+                "Fn::Sub": "${ProfilePicturesBucket}.s3.amazonaws.com"
+              },
+              "Id": "PROFILE_PICTURES",
+              "S3OriginConfig": {
+              }
             }
           ],
           "DefaultCacheBehavior": {
@@ -352,7 +388,29 @@
             "MaxTTL": 0,
             "MinTTL": 0,
             "ViewerProtocolPolicy": "redirect-to-https"
-          }
+          },
+          "CacheBehaviors": [
+            {
+              "PathPattern": "/users/*/picture/*",
+              "TargetOriginId": "PROFILE_PICTURES",
+              "Compress": true,
+              "AllowedMethods": [
+                "GET",
+                "HEAD",
+                "OPTIONS"
+              ],
+              "ForwardedValues": {
+                "QueryString": "false",
+                "Cookies": {
+                  "Forward": "none"
+                }
+              },
+              "DefaultTTL": 0,
+              "MinTTL": 0,
+              "MaxTTL": 0,
+              "ViewerProtocolPolicy": "redirect-to-https"
+            }
+          ]
         }
       }
     },
@@ -579,8 +637,7 @@
           "Ref": "UsersResource"
         },
         "AuthorizationType": "NONE",
-        "RequestParameters": {
-        },
+        "RequestParameters": {},
         "MethodResponses": [
           {
             "StatusCode": "201",
@@ -601,8 +658,7 @@
             "Fn::Sub": "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UserRegistrationLambda.Arn}/invocations"
           },
           "IntegrationHttpMethod": "POST",
-          "RequestParameters": {
-          },
+          "RequestParameters": {},
           "RequestTemplates": {
             "application/json": "{\"username\": $input.json('$.username'),\"email\": $input.json('$.email')}"
           },
@@ -647,6 +703,224 @@
         "SourceArn": {
           "Fn::Sub": "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/*"
         }
+      }
+    },
+    "ImageResizerLambda": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Handler": "com.serverlessbook.lambda.imageresizer.Handler",
+        "Runtime": "java8",
+        "Timeout": "300",
+        "MemorySize": "1024",
+        "Description": "Test lambda",
+        "Role": {
+          "Fn::GetAtt": [
+            "LambdaExecutionRole",
+            "Arn"
+          ]
+        },
+        "Code": {
+          "S3Bucket": {
+            "Ref": "DeploymentBucket"
+          },
+          "S3Key": {
+            "Fn::Sub": "artifacts/lambda-imageresizer/${ProjectVersion}/${DeploymentTime}.jar"
+          }
+        }
+      }
+    },
+    "ProfilePicturesBucket": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "BucketName": {
+          "Fn::Sub": "${DomainName}-profilepictures"
+        },
+        "NotificationConfiguration": {
+          "LambdaConfigurations": [
+            {
+              "Event": "s3:ObjectCreated:*",
+              "Filter": {
+                "S3Key": {
+                  "Rules": [
+                    {
+                      "Name": "prefix",
+                      "Value": "uploads/"
+                    }
+                  ]
+                }
+              },
+              "Function": {
+                "Fn::GetAtt": [
+                  "ImageResizerLambda",
+                  "Arn"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "ImageResizerLambdaPermisson": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Ref": "ImageResizerLambda"
+        },
+        "Principal": "s3.amazonaws.com",
+        "SourceArn": {
+          "Fn::Sub": "arn:aws:s3:::${DomainName}-profilepictures"
+        }
+      }
+    },
+    "ApiGatewayProxyRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "apigateway.amazonaws.com"
+                ]
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyName": "S3BucketPolicy",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:PutObject",
+                    "s3:PutObjectAcl"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::Sub": "arn:aws:s3:::${ProfilePicturesBucket}"
+                    },
+                    {
+                      "Fn::Sub": "arn:aws:s3:::${ProfilePicturesBucket}/*"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "UsersIdResource": {
+      "Type": "AWS::ApiGateway::Resource",
+      "Properties": {
+        "PathPart": "{id}",
+        "RestApiId": {
+          "Ref": "RestApi"
+        },
+        "ParentId": {
+          "Ref": "UsersResource"
+        }
+      }
+    },
+    "UsersIdPictureResource": {
+      "Type": "AWS::ApiGateway::Resource",
+      "Properties": {
+        "PathPart": "picture",
+        "RestApiId": {
+          "Ref": "RestApi"
+        },
+        "ParentId": {
+          "Ref": "UsersIdResource"
+        }
+      }
+    },
+    "UsersIdPicturePutMethod": {
+      "Type": "AWS::ApiGateway::Method",
+      "Properties": {
+        "HttpMethod": "PUT",
+        "RestApiId": {
+          "Ref": "RestApi"
+        },
+        "AuthorizationType": "CUSTOM",
+        "AuthorizerId": {
+          "Ref": "ApiGatewayAuthorizer"
+        },
+        "ResourceId": {
+          "Ref": "UsersIdPictureResource"
+        },
+        "RequestParameters": {
+          "method.request.path.id": "True",
+          "method.request.header.Content-Type": "True",
+          "method.request.header.Content-Length": "True"
+        },
+        "Integration": {
+          "Type": "AWS",
+          "Uri": {
+            "Fn::Sub": "arn:aws:apigateway:${AWS::Region}:s3:path/${ProfilePicturesBucket}/uploads/{filename}"
+          },
+          "IntegrationHttpMethod": "PUT",
+          "Credentials": {
+            "Fn::GetAtt": [
+              "ApiGatewayProxyRole",
+              "Arn"
+            ]
+          },
+          "RequestParameters": {
+            "integration.request.path.filename": "context.requestId",
+            "integration.request.header.Content-Type": "method.request.header.Content-Type",
+            "integration.request.header.Content-Length": "method.request.header.Content-Length",
+            "integration.request.header.Expect": "'100-continue'",
+            "integration.request.header.x-amz-acl": "'public-read'",
+            "integration.request.header.x-amz-meta-user-id": "method.request.path.id",
+            "integration.request.header.x-amz-meta-uploader-user-id": "context.authorizer.principalId"
+          },
+          "RequestTemplates": {},
+          "PassthroughBehavior": "WHEN_NO_TEMPLATES",
+          "IntegrationResponses": [
+            {
+              "SelectionPattern": "4\\d{2}",
+              "StatusCode": "400"
+            },
+            {
+              "SelectionPattern": "5\\d{2}",
+              "StatusCode": "500"
+            },
+            {
+              "SelectionPattern": ".*",
+              "StatusCode": "202",
+              "ResponseTemplates": {
+                "application/json": {
+                  "Fn::Sub": "{\"status\": \"pending\"}"
+                }
+              }
+            }
+          ]
+        },
+        "MethodResponses": [
+          {
+            "StatusCode": "202"
+          },
+          {
+            "StatusCode": "400"
+          },
+          {
+            "StatusCode": "500"
+          }
+        ]
+      }
+    },
+    "UserRegistrationSnsTopic": {
+      "Type": "AWS::SNS::Topic",
+      "Properties": {
+        "Subscription": []
       }
     }
   }
