@@ -11,6 +11,9 @@ import javax.inject.Inject;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 public class UserServiceImpl implements UserService {
 
@@ -28,16 +31,18 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    public List<User> getUsers() throws UserNotFoundException {
+        return userRepository.getUsers().orElseThrow(UserNotFoundException::new);
+    }
+
+    @Override
     public User registerNewUser(String username, String email) throws UserRegistrationException {
 
         checkEmailValidity(email);
         checkEmailUniqueness(email);
         checkUsernameUniqueness(username);
 
-        User newUser = new User()
-                .setId(UUID.randomUUID().toString())
-                .setUsername(username)
-                .setEmail(email);
+        User newUser = new User().setId(UUID.randomUUID().toString()).setUsername(username).setEmail(email);
 
         userRepository.saveUser(newUser);
         return newUser;

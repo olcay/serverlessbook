@@ -3,11 +3,15 @@ package com.serverlessbook.services.user.repository;
 import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBMapper;
 import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBQueryExpression;
 import com.amazonaws.services.dynamodbv2.datamodeling.QueryResultPage;
+import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBScanExpression;
 import com.serverlessbook.services.user.domain.Token;
 import com.serverlessbook.services.user.domain.User;
 
 import javax.inject.Inject;
 import java.util.Optional;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 public class UserRepositoryDynamoDB implements UserRepository {
 
@@ -34,12 +38,17 @@ public class UserRepositoryDynamoDB implements UserRepository {
         dynamoDBMapper.save(user);
     }
 
+    @Override
+    public Optional<List<User>> getUsers() {
+        List<User> result = dynamoDBMapper.scan(User.class, new DynamoDBScanExpression());
+
+        return Optional.of(result);
+    }
+
     public Optional<User> getUserByCriteria(String indexName, User hashKeyValues) {
 
-        DynamoDBQueryExpression<User> expression = new DynamoDBQueryExpression<User>()
-                .withIndexName(indexName)
-                .withConsistentRead(false)
-                .withHashKeyValues(hashKeyValues);
+        DynamoDBQueryExpression<User> expression = new DynamoDBQueryExpression<User>().withIndexName(indexName)
+                .withConsistentRead(false).withHashKeyValues(hashKeyValues);
 
         QueryResultPage<User> result = dynamoDBMapper.queryPage(User.class, expression);
 
