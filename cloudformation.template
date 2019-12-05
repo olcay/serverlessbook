@@ -221,6 +221,17 @@
             {
               "Effect": "Allow",
               "Action": [
+                "SNS:Publish"
+              ],
+              "Resource": [
+                {
+                  "Ref": "FileUploadSnsTopic"
+                }
+              ]
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
                 "ses:*"
               ],
               "Resource": "*"
@@ -375,8 +386,7 @@
                 "Fn::Sub": "${ProfilePicturesBucket}.s3.amazonaws.com"
               },
               "Id": "PROFILE_PICTURES",
-              "S3OriginConfig": {
-              }
+              "S3OriginConfig": {}
             }
           ],
           "DefaultCacheBehavior": {
@@ -747,6 +757,13 @@
           "S3Key": {
             "Fn::Sub": "artifacts/lambda-imageresizer/${ProjectVersion}/${DeploymentTime}.jar"
           }
+        },
+        "Environment": {
+          "Variables": {
+            "FileUploadSnsTopic": {
+              "Ref": "FileUploadSnsTopic"
+            }
+          }
         }
       }
     },
@@ -961,6 +978,12 @@
             "Protocol": "sqs"
           }
         ]
+      }
+    },
+    "FileUploadSnsTopic": {
+      "Type": "AWS::SNS::Topic",
+      "Properties": {
+        "Subscription": []
       }
     },
     "UserRegistrationWelcomeMailLambda": {
