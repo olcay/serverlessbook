@@ -983,7 +983,59 @@
     "FileUploadSnsTopic": {
       "Type": "AWS::SNS::Topic",
       "Properties": {
-        "Subscription": []
+        "Subscription": [
+          {
+            "Endpoint": {
+              "Fn::GetAtt": [
+                "FileUploadReadyMailLambda",
+                "Arn"
+              ]
+            },
+            "Protocol": "lambda"
+          }
+        ]
+      }
+    },
+    "FileUploadReadyMailLambda": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Handler": "com.serverlessbook.lambda.fileupload.readymail.Handler",
+        "Runtime": "java8",
+        "Timeout": "300",
+        "MemorySize": "1024",
+        "Description": "File upload ready mail Lambda",
+        "Role": {
+          "Fn::GetAtt": [
+            "LambdaExecutionRole",
+            "Arn"
+          ]
+        },
+        "Code": {
+          "S3Bucket": {
+            "Ref": "DeploymentBucket"
+          },
+          "S3Key": {
+            "Fn::Sub": "artifacts/lambda-fileupload-readymail/${ProjectVersion}/${DeploymentTime}.jar"
+          }
+        },
+        "Environment": {
+          "Variables": {
+            "SenderEmail": "noreply@otomatikmuhendis.com"
+          }
+        }
+      }
+    },
+    "FileUploadReadyMailLambdaPermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Ref": "FileUploadReadyMailLambda"
+        },
+        "Principal": "sns.amazonaws.com",
+        "SourceArn": {
+          "Fn::Sub": "arn:aws:sns:${AWS::Region}:${AWS::AccountId}:*"
+        }
       }
     },
     "UserRegistrationWelcomeMailLambda": {

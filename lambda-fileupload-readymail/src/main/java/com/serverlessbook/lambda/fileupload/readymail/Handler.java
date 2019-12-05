@@ -1,5 +1,4 @@
-package com.serverlessbook.lambda.userregistration.welcomemail;
-
+package com.serverlessbook.lambda.fileupload.readymail;
 
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
@@ -40,19 +39,22 @@ public class Handler implements RequestHandler<SNSEvent, Void> {
     Destination destination = new Destination().withToAddresses(emailAddress);
 
     Message message = new Message()
-        .withBody(new Body().withText(new Content("Welcome to PharmaBot! This email address will be used to notify for the new files.")))
-        .withSubject(new Content("Welcome!"));
+        .withBody(
+          new Body()
+          .withText(new Content("New file is uploaded. Go to https://requestbincore.herokuapp.com/Home/Scan for more details."))
+          .withHtml(new Content("New file is uploaded. Go to <a href='https://requestbincore.herokuapp.com/Home/Scan'>scan page</a> for more details.")))
+        .withSubject(new Content("New file uploaded!"));
 
     try {
-      LOGGER.log("Sending welcome mail to " + emailAddress);
+      LOGGER.log("Sending ready mail to " + emailAddress);
       simpleEmailServiceClient.sendEmail(new SendEmailRequest()
           .withDestination(destination)
           .withSource(System.getenv("SenderEmail"))
           .withMessage(message)
       );
-      LOGGER.log("Sending welcome mail to " + emailAddress + " succeeded");
+      LOGGER.log("Sending ready mail to " + emailAddress + " succeeded");
     } catch (Exception anyException) {
-      LOGGER.log("Sending welcome mail to " + emailAddress + " failed: "+ anyException.getMessage());
+      LOGGER.log("Sending ready mail to " + emailAddress + " failed: "+ anyException.getMessage());
     }
 
   }
